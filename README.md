@@ -1,5 +1,7 @@
 # Gaean Key
 
+[![Terraform Tests](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml/badge.svg)](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml)
+
 A comprehensive, modular Terraform-based system for automated credential rotation across multiple platforms and services.
 The system uses an extensible architecture to support various credential providers, and deployment targets through pluggable extensions
 while maintaining an isolated extension environment.
