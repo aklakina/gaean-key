@@ -6,6 +6,12 @@ A comprehensive, modular Terraform-based system for automated credential rotatio
 The system uses an extensible architecture to support various credential providers, and deployment targets through pluggable extensions
 while maintaining an isolated extension environment.
 
+## Why Gaean Key?
+
+Managing and rotating credentials is a critical aspect of maintaining security in any infrastructure. Gaean Key provides a structured and automated approach to handle this complex task, ensuring that credentials are rotated regularly and securely across different services.
+Unlike other solutions, Gaean Key is designed to be a multi-cloud, multi-service framework that can be easily extended to support new services and deployment targets.
+This makes it a versatile choice for organizations with diverse infrastructure needs.
+
 ## Documentation
 
 1. [Quick Start](./docs/quick_start.md)
