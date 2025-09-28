@@ -15,3 +15,7 @@ while maintaining an isolated extension environment.
 5. [Extension Development](./docs/extension_development.md)
 6. [Available Extensions](./docs/available_extensions.md)
 7. [Troubleshooting](./docs/troubleshooting.md)
+
+## License
+
+Licensed under the MIT License

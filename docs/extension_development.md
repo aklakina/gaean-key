@@ -67,7 +67,7 @@ Components can be grouped into two distinct types.
 1. **Providers**: Get, Rotation
 2. **Consumers**: Deployment
 
-Additionally to the `configurations` object the engine passes to the modules, these types are expected to also handle and provide specific outputs in a specific format.
+Additionally, to the `configurations` object the engine passes to the modules, these types are expected to also handle and provide specific outputs in a specific format.
 
 #### Providers
 
