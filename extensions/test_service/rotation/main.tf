@@ -6,6 +6,6 @@ resource "random_string" "main" {
 
 resource "random_password" "main" {
   for_each = var.configurations
-  length  = each.value.password_length
-  special = true
+  length   = each.value.password_length
+  special  = true
 }

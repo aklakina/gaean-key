@@ -1,6 +1,6 @@
 variable "configurations" {
   type = map(object({
-    id = string
+    id          = string
     description = optional(string, "Managed by Terraform")
     secret = object({
       service = string

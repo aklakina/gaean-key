@@ -9,7 +9,7 @@ locals {
           length(split("/", replace(file_path, "${split("/", file_path)[0]}/${stage}/", ""))) - 1
         )
         config_name = replace(element(split("/", file_path), -1), ".yml", "")
-        config = yamldecode(file("${path.module}/../../configurations/${file_path}"))
+        config      = yamldecode(file("${path.module}/../../configurations/${file_path}"))
       }
     ]
   }
@@ -21,7 +21,7 @@ data "jinja_template" "parse_configs" {
   context {
     type = "yaml"
     data = yamlencode({
-      stage = each.key,
+      stage        = each.key,
       flat_configs = local.flat_configs[each.key]
     })
   }
@@ -34,6 +34,6 @@ data "jinja_template" "parse_configs" {
 locals {
   configs = merge({
     for stage in ["deployment", "rotation", "get"] :
-      stage => jsondecode(data.jinja_template.parse_configs[stage].result)
+    stage => jsondecode(data.jinja_template.parse_configs[stage].result)
   })
 }

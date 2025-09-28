@@ -8,13 +8,13 @@ locals {
 
 resource "time_rotating" "rotate" {
   # the rotation is independent for each config. We need to create a flattened map from the map of maps in the configs variable
-  for_each = local.flattened_configs
+  for_each         = local.flattened_configs
   rotation_minutes = provider::time::duration_parse(each.value["validity_duration"]).minutes * 2
 }
 
 resource "terraform_data" "timer" {
-  for_each = local.flattened_configs
-  input = plantimestamp()
+  for_each         = local.flattened_configs
+  input            = plantimestamp()
   triggers_replace = time_rotating.rotate[each.key].id
   lifecycle {
     ignore_changes = [input]
@@ -37,7 +37,7 @@ locals {
               ),
               "-${try(vv["rotation_window_duration"], "0s")}"
             )
-          ) >= 0 && timecmp(
+            ) >= 0 && timecmp(
             plantimestamp(),
             timeadd(
               terraform_data.timer["${k}_${kk}"].input,
@@ -51,7 +51,7 @@ locals {
             terraform_data.timer["${k}_${kk}"].input,
             vv["validity_duration"]
           )
-        ) <= 0 || timecmp(
+          ) <= 0 || timecmp(
           plantimestamp(),
           timeadd(
             timeadd(

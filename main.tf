@@ -30,7 +30,7 @@ resource "terraform_data" "conflict_check" {
   }
   lifecycle {
     postcondition {
-      condition = length(local.duplicate_ids) == 0
+      condition     = length(local.duplicate_ids) == 0
       error_message = "Conflict detected: The same credential ID exists in both get and rotation modules for the same service."
     }
   }
