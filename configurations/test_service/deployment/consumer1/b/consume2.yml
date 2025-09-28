@@ -1,0 +1,6 @@
+---
+id: b
+description: consumer1 consume2
+secret:
+  id: dynamic-cred
+  service: test_service

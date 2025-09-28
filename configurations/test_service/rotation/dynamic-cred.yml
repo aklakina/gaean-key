@@ -1,0 +1,5 @@
+---
+name_prefix: dyncred_
+password_length: 5
+validity_duration: 2m
+rotation_window_duration: 1m

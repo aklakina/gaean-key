@@ -1,0 +1,6 @@
+---
+id: a
+description: consumer1 consume1
+secret:
+  id: static-cred
+  service: test_service

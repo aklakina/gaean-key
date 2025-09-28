@@ -1,0 +1,41 @@
+{# Unified template to process configurations for all stages #}
+
+{# Define a recursive function to build nested structure #}
+{% macro build_nested(current, config_path, config_name, config_data) %}
+  {% set path_length = config_path | length %}
+  {# Base case: if path is empty, set the config data #}
+  {% if path_length == 0 %}
+    {# Base case: reached end of path, set config data #}
+    {% set current[config_name] = config_data %}
+  {% else %}
+    {# Get first segment and remaining segments #}
+    {% set segment = config_path | first %}
+    {# Create segment namespace if it doesn't exist #}
+    {% if segment not in current %}
+      {% set current[segment] = namespace() %}
+    {% endif %}
+
+    {# Recursive call for remaining segments #}
+    {{ build_nested(current[segment], config_path[1:], config_name, config_data) }}
+  {% endif %}
+{% endmacro %}
+
+{% set configs = namespace() %}
+
+{# Process all configs using the recursive function #}
+{% for item in flat_configs %}
+  {% set service = item.service %}
+  {% set path_segments = item.path_segments %}
+  {% set config_name = item.config_name %}
+  {% set config_data = item.config %}
+
+  {# Initialize service if not exists #}
+  {% if service not in configs %}
+    {% set configs[service] = namespace() %}
+  {% endif %}
+
+  {# Call recursive function starting at service level #}
+  {{ build_nested(configs[service], path_segments, config_name, config_data) }}
+{% endfor %}
+
+{{ configs | tojson }}

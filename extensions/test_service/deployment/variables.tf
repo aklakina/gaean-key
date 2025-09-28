@@ -1,0 +1,3 @@
+variable "secrets" {}
+
+variable "configurations" {}
