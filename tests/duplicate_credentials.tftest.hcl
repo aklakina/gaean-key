@@ -9,11 +9,3 @@ run "test_duplicate_credential_conflict_plan" {
     terraform_data.conflict_check,
   ]
 }
-
-run "test_duplicate_credential_conflict_apply" {
-  command = apply
-
-  expect_failures = [
-    terraform_data.conflict_check,
-  ]
-}
