@@ -29,7 +29,9 @@ The rotation engine uses a **dual-phase mechanism** to ensure zero-downtime cred
   - phase 1 exists in `[t0, t0 + E)` and `[t0 + 2E - W, t0 + 2E)`,
   - phase 2 exists in `[t0 + E - W, t0 + 2E)`,
   - consumers get the phase 2 credential in `[t0 + E - W, t0 + 2E - W)` and the phase 1 credential otherwise.
-- So the old and the new credential are both valid for `W` around every switch, and each credential lives at most `E`.
+- So the old and the new credential are both valid for `W` around every switch. Each credential is handed out for `E` and exists for `E + W`, plus the delay until the scheduled run that rotates it.
+- Credentials whose service enforces an expiry must therefore be valid for `expires_in + rotation_window`, not just `expires_in`: otherwise, from the second switch on, the previous credential expires exactly when consumers switch away from it, and the overlap is lost. The bundled extensions do this (see [Extension Development](./extension_development.md#rotation)).
+- Each switch happens at the first run after its boundary, and that delay comes out of the overlap: schedule runs at intervals well under half of `W`.
 - `modules/rotation_schedule` tracks the `2E` cycle with `time_rotating` and `plantimestamp()` decides which phases currently exist (the arithmetic is in `modules/rotation_schedule/phases`, unit tested with `tofu test`). These resources use `create_before_destroy`; see [the ADR](./adr/20260303-fix-circular-dependency-in-rotation-lifecycle.md) for why.
 - Each stack's `schedule` output shows the cycle start and which phases are active.
 - Rotation is time driven: run the rotation stacks on a schedule together with their dependents (`terramate run --tags rotation --include-all-dependents ...`, see [Quick Start](./quick_start.md#scheduled-rotation)). A consumer sees a new credential once the rotation stack has been applied.

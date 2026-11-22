@@ -30,7 +30,7 @@ Every extension above (except `test_service`) needs a provider. Each extension c
   Settings in a `*.tm.hcl` deeper in `stacks/` (e.g. `stacks/github/`) override those above it.
 - **Retiring a service**: destroy its stacks first (`terramate run --chdir stacks/<service> --reverse --enable-sharing --mock-on-fail -- tofu destroy`), then delete its configurations and run `python scripts/sync_stacks.py --prune`. Each stack keeps its provider until the stack itself is removed.
 
-All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when the stacks run, so apply the rotation stacks with their dependents on a schedule that is much shorter than the rotation window (e.g. a daily pipeline running `terramate run --enable-sharing --tags rotation --include-all-dependents -- tofu apply -auto-approve`).
+All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when the stacks run, so apply the rotation stacks with their dependents on a schedule well under half the rotation window (a switch happens at the first run after its boundary, and that delay comes out of the overlap) (e.g. a daily pipeline running `terramate run --enable-sharing --tags rotation --include-all-dependents -- tofu apply -auto-approve`).
 
 ---
 
@@ -69,7 +69,7 @@ rotation_window: "${14*24}h"
 | `client_id` | yes | Application (client) ID of the app registration |
 | `display_name` | no | Name of the client secret; default `gaean-key <id> <creation date>` |
 
-Provides `azuread/<id>` with `username` = client id, `secret` = client secret. The secret's `end_date` in Entra ID is its creation time + `expires_in`, so an unrotated secret really stops working.
+Provides `azuread/<id>` with `username` = client id, `secret` = client secret. The secret's `end_date` in Entra ID is its creation time + `expires_in` + `rotation_window` (the time its phase exists, so the old secret stays valid through the overlap), so an unrotated secret really stops working.
 
 - **Credentials**: the azuread provider's standard sources (`ARM_CLIENT_ID`/`ARM_CLIENT_SECRET`/`ARM_TENANT_ID`, OIDC, managed identity, Azure CLI); tenant also via the global `provider_settings.azuread.tenant_id`. The identity must be allowed to manage credentials of the apps (e.g. owner of the app registrations, or `Application.ReadWrite.OwnedBy`).
 
@@ -96,7 +96,7 @@ rotation_window: "${7*24}h"
 Provides `gitlab/<id>` with `username` = token name, `secret` = token.
 
 - **Credentials**: `GITLAB_TOKEN` (a token allowed to create access tokens on the projects/groups, e.g. a maintainer's or owner's); self-managed instances via `GITLAB_BASE_URL` or the global `provider_settings.gitlab.base_url`.
-- GitLab expiry dates have **day precision** and the instance enforces a maximum lifetime (365 days by default), so the rotation window must be at least 24h (checked at plan time) and `expires_in` within that maximum.
+- The token's `expires_at` is the date of creation + `expires_in` + `rotation_window` (the time its phase exists), **rounded up** because GitLab expiry dates have day precision. The instance enforces a maximum lifetime (365 days by default), so keep `expires_in` + `rotation_window` + 1 day within it.
 
 ## GitHub Actions secrets
 
