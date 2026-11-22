@@ -50,7 +50,7 @@ They combine well: run Gaean Key in a pipeline that authenticates to the clouds 
 ### Trade-offs to know about
 
 - **Secrets pass through OpenTofu state.** Rotated values end up in the state (and plan) files, like with any OpenTofu-managed credential. Use OpenTofu's [client-side state and plan encryption](https://opentofu.org/docs/language/state/encryption/) and a backend only the rotation pipeline can read.
-- **Rotation happens when OpenTofu runs.** Schedule `tofu apply` well within the rotation window (for example daily); a missed run is caught up by the next one as long as it falls inside the window.
+- **Rotation happens when OpenTofu runs.** Each switch happens at the first run after its boundary, and that delay comes out of the overlap window, so schedule `tofu apply` at intervals well under half the rotation window (for example daily for a 7-day window); a missed run is then still caught up within the overlap.
 - **Lifetimes are days to months, not minutes.** That is the point (long-lived credentials for consumers that need them), but it is not a substitute for dynamic secrets.
 - **The pipeline is privileged.** It can mint credentials, so protect it like any other deployment pipeline.
 

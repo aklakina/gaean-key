@@ -21,6 +21,11 @@ run "adds_client_secret_with_expiry" {
         client_id  = "11111111-1111-1111-1111-111111111111"
         expires_in = "$${30*24}h"
       }
+      explicit-window = {
+        client_id       = "22222222-2222-2222-2222-222222222222"
+        expires_in      = "720h"
+        rotation_window = "48h"
+      }
     }
   }
 
@@ -30,8 +35,15 @@ run "adds_client_secret_with_expiry" {
   }
 
   assert {
-    condition     = azuread_application_password.this["deployer"].end_date == timeadd(time_static.created["deployer"].rfc3339, "720h")
-    error_message = "end_date must be creation time + expires_in (templates evaluated)."
+    # 720h + the default rotation window (20% = 144h): the secret must stay valid as long as its
+    # phase exists, or the overlap between the old and the new secret is lost.
+    condition     = azuread_application_password.this["deployer"].end_date == timeadd(time_static.created["deployer"].rfc3339, "864h")
+    error_message = "end_date must be creation time + expires_in + default rotation window (templates evaluated)."
+  }
+
+  assert {
+    condition     = azuread_application_password.this["explicit-window"].end_date == timeadd(time_static.created["explicit-window"].rfc3339, "768h")
+    error_message = "end_date must be creation time + expires_in + rotation_window."
   }
 
   assert {

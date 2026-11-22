@@ -32,8 +32,10 @@ run "creates_project_and_group_tokens" {
   }
 
   assert {
-    condition     = gitlab_project_access_token.this["ci-read"].expires_at == formatdate("YYYY-MM-DD", timeadd(time_static.created["ci-read"].rfc3339, "720h"))
-    error_message = "expires_at must be the date of creation time + expires_in."
+    # 720h + the default rotation window (20% = 144h) = 864h, rounded up to the next date (+24h,
+    # then truncated): the token must stay valid as long as its phase exists.
+    condition     = gitlab_project_access_token.this["ci-read"].expires_at == formatdate("YYYY-MM-DD", timeadd(time_static.created["ci-read"].rfc3339, "888h"))
+    error_message = "expires_at must be the date of creation time + expires_in + default rotation window, rounded up."
   }
 
   assert {
@@ -68,8 +70,8 @@ run "rejects_project_and_group_together" {
   expect_failures = [var.configurations]
 }
 
-run "rejects_rotation_window_below_one_day" {
-  command = plan
+run "expiry_covers_the_whole_phase_even_with_short_windows" {
+  command = apply
 
   module {
     source = "./extensions/gitlab/rotation"
@@ -86,5 +88,14 @@ run "rejects_rotation_window_below_one_day" {
     }
   }
 
-  expect_failures = [var.configurations]
+  assert {
+    # the token expires at 00:00 UTC of expires_at, which must not be before creation + 732h
+    condition     = timecmp("${gitlab_project_access_token.this["short"].expires_at}T00:00:00Z", timeadd(time_static.created["short"].rfc3339, "732h")) >= 0
+    error_message = "With day precision the token must still be valid for expires_in + rotation_window."
+  }
+
+  assert {
+    condition     = timecmp("${gitlab_project_access_token.this["short"].expires_at}T00:00:00Z", timeadd(time_static.created["short"].rfc3339, "756h")) <= 0
+    error_message = "expires_at must be rounded up by at most one day."
+  }
 }

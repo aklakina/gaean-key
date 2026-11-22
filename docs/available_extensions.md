@@ -19,7 +19,7 @@ Every extension above (except `test_service`) needs a provider. The engine creat
 - **Non-secret settings** (region, GitHub owner, GitLab URL, tenant, subscription) can also be set with the optional root variable `provider_settings`, see [`versions.tf`](../versions.tf).
 - **Retiring a service**: delete its configs and apply (this destroys the credentials), then delete its `service.yml`. If you delete the whole folder at once, the provider disappears before OpenTofu can destroy the credentials ("Provider instance not present"); restore `service.yml` and apply again.
 
-All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when OpenTofu runs, so run `tofu apply` on a schedule that is much shorter than the rotation window (e.g. a daily pipeline).
+All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when OpenTofu runs, so run `tofu apply` on a schedule well under half the rotation window (e.g. a daily pipeline): a switch happens at the first run after its boundary, and that delay comes out of the overlap.
 
 ---
 
@@ -58,7 +58,7 @@ rotation_window: "${14*24}h"
 | `client_id` | yes | Application (client) ID of the app registration |
 | `display_name` | no | Name of the client secret; default `gaean-key <id> <creation date>` |
 
-Provides `azuread/<id>` with `username` = client id, `secret` = client secret. The secret's `end_date` in Entra ID is its creation time + `expires_in`, so an unrotated secret really stops working.
+Provides `azuread/<id>` with `username` = client id, `secret` = client secret. The secret's `end_date` in Entra ID is its creation time + `expires_in` + `rotation_window` (the time its phase exists, so the old secret stays valid through the overlap), so an unrotated secret really stops working.
 
 - **Credentials**: the azuread provider's standard sources (`ARM_CLIENT_ID`/`ARM_CLIENT_SECRET`/`ARM_TENANT_ID`, OIDC, managed identity, Azure CLI); tenant also via `provider_settings.azuread.tenant_id`. The identity must be allowed to manage credentials of the apps (e.g. owner of the app registrations, or `Application.ReadWrite.OwnedBy`).
 
@@ -85,7 +85,7 @@ rotation_window: "${7*24}h"
 Provides `gitlab/<id>` with `username` = token name, `secret` = token.
 
 - **Credentials**: `GITLAB_TOKEN` (a token allowed to create access tokens on the projects/groups, e.g. a maintainer's or owner's); self-managed instances via `GITLAB_BASE_URL` or `provider_settings.gitlab.base_url`.
-- GitLab expiry dates have **day precision** and the instance enforces a maximum lifetime (365 days by default), so the rotation window must be at least 24h (checked at plan time) and `expires_in` within that maximum.
+- The token's `expires_at` is the date of creation + `expires_in` + `rotation_window` (the time its phase exists), **rounded up** because GitLab expiry dates have day precision. The instance enforces a maximum lifetime (365 days by default), so keep `expires_in` + `rotation_window` + 1 day within it.
 
 ## GitHub Actions secrets
 

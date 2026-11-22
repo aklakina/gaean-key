@@ -5,7 +5,9 @@ variable "configurations" {
     client_id = string
     # Display name of the client secret; defaults to "gaean-key <id> <creation date>".
     display_name = optional(string)
-    # Passed through from the rotation config; used as the lifetime (end_date) of the secret.
-    expires_in = string
+    # Passed through from the rotation config. The secret's end_date is creation +
+    # expires_in + rotation_window (the time a phase exists), see main.tf.
+    expires_in      = string
+    rotation_window = optional(string)
   }))
 }

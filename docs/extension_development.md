@@ -128,6 +128,8 @@ Every rotation configuration **must** include an `expires_in` property that defi
 
 An optional `rotation_window` property defines the overlap during which both the old and the new credential are valid. It defaults to 20% of `expires_in` and must be shorter than it.
 
+If the service enforces an expiry on the credential (an `end_date`, `expires_at`, ...), make it valid for **`expires_in` + `rotation_window`** (default window: 20% of `expires_in`, rounded to minutes like the engine does), not just `expires_in`. A phase exists that long: it is created `rotation_window` before consumers switch to it and destroyed `rotation_window` after they switch away. With a lifetime of only `expires_in`, the previous credential expires exactly when consumers switch away from it from the second switch on, so the overlap is lost. Round up if the service has coarser precision (GitLab uses whole days). The `azuread` and `gitlab` extensions show how; declare `rotation_window` as an optional variable attribute to receive it.
+
 The extension itself should create a credential valid for (at least) `expires_in`; the engine decides when it is replaced.
 
 ##### Inputs
