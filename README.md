@@ -81,6 +81,8 @@ A provider is only configured for the services you have configurations for, so y
 
 ## Documentation
 
+> **Two engine implementations.** This README describes the engine on its branch. `master` runs everything as one OpenTofu root module; [`implementation/terramate`](https://github.com/aklakina/gaean-key/tree/implementation/terramate) runs one Terramate stack per credential. Same configurations, extensions and rotation semantics. Pros and cons: [Engine implementations](./docs/engine_implementations.md).
+
 1. [Quick Start](./docs/quick_start.md)
 2. [High Level Overview](./docs/high_level_overview.md)
 3. [Architecture Overview](./docs/architecture_overview.md)
@@ -88,6 +90,7 @@ A provider is only configured for the services you have configurations for, so y
 5. [Extension Development](./docs/extension_development.md)
 6. [Available Extensions](./docs/available_extensions.md)
 7. [Troubleshooting](./docs/troubleshooting.md)
+8. [Engine implementations](./docs/engine_implementations.md) (root module vs. Terramate stacks)
 
 ## License
 
