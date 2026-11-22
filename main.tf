@@ -35,6 +35,8 @@ module "rotation" {
 
   configs = module.load_configs.configs["rotation"]
 
+  provider_settings = var.provider_settings
+
   # Retrieved credentials, so a rotation can depend on another credential.
   secrets = local.credentials
 }
@@ -84,7 +86,9 @@ module "deployment" {
 
   secrets = local.merged_credentials
   configs = module.load_configs.configs["deployment"]
-  depends_on = [
-    terraform_data.conflict_check
-  ]
+
+  provider_settings = var.provider_settings
+  # No depends_on on terraform_data.conflict_check: modules/deploy declares its own (gated)
+  # providers, which rules out depends_on. Not needed either: the ids are plan-time known, so a
+  # conflict fails the plan before anything is applied.
 }

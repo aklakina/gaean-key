@@ -43,8 +43,10 @@ Gaean Key/
 │   ├── config_processor.jinja2            # Jinja2 template rebuilding the folder hierarchy of configs
 │   ├── load_configs/                      # Configuration loading (incl. service.yml defaults)
 │   ├── get/                               # Secret retrieval functionality
-│   ├── rotate/                            # Secret rotation functionality (dual-phase; modules.tf wires the extensions)
-│   └── deploy/                            # Secret deployment functionality
+│   ├── rotate/                            # Secret rotation functionality (dual-phase; modules.tf wires the extensions, providers.tf their gated providers)
+│   └── deploy/                            # Secret deployment functionality (providers.tf: gated providers)
+├── examples/configurations/               # Example configurations of the bundled extensions
+├── tests/                                 # tofu test suites (engine end-to-end, extensions with mock providers)
 ├── configurations/                        # service-specific configurations
 │   └── <service>/                         # service-specific configuration folders
 │       ├── service.yml                    # (Optional) defaults merged under every config of the service

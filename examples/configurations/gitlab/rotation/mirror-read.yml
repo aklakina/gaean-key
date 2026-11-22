@@ -1,0 +1,9 @@
+---
+# Read-only project token for a GitHub Actions workflow that mirrors a GitLab repository.
+# GitLab does not accept GitHub's OIDC tokens for repository access, so a token is needed.
+project: my-group/my-project
+scopes:
+  - read_repository
+access_level: reporter
+expires_in: "${60*24}h"
+rotation_window: "${7*24}h"

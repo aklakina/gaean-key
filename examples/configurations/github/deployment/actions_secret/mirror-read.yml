@@ -1,0 +1,8 @@
+---
+# Deploys the GitLab token above as Actions secrets of the mirroring repository.
+repository: my-mirror
+secret_name: GITLAB_TOKEN
+username_secret_name: GITLAB_USERNAME
+secret:
+  service: gitlab
+  id: mirror-read

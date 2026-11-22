@@ -16,6 +16,33 @@ output "credentials" {
       )
       if split("/", key)[0] == "test_service"
     }
+    aws = {
+      for key, value in local.all_configs : local.secret_ids[key] => convert(
+        local.use_phase2[key]
+        ? module.aws_phase2[split("/", key)[1]].secret[local.secret_ids[key]]
+        : module.aws_phase1[split("/", key)[1]].secret[local.secret_ids[key]],
+        object({ username = string, secret = string })
+      )
+      if split("/", key)[0] == "aws"
+    }
+    azuread = {
+      for key, value in local.all_configs : local.secret_ids[key] => convert(
+        local.use_phase2[key]
+        ? module.azuread_phase2[split("/", key)[1]].secret[local.secret_ids[key]]
+        : module.azuread_phase1[split("/", key)[1]].secret[local.secret_ids[key]],
+        object({ username = string, secret = string })
+      )
+      if split("/", key)[0] == "azuread"
+    }
+    gitlab = {
+      for key, value in local.all_configs : local.secret_ids[key] => convert(
+        local.use_phase2[key]
+        ? module.gitlab_phase2[split("/", key)[1]].secret[local.secret_ids[key]]
+        : module.gitlab_phase1[split("/", key)[1]].secret[local.secret_ids[key]],
+        object({ username = string, secret = string })
+      )
+      if split("/", key)[0] == "gitlab"
+    }
   }
   sensitive = true
 }

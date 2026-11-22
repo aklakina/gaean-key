@@ -34,6 +34,10 @@ variable "configs" {
   }
 }
 
+variable "provider_settings" {
+  description = "Non-secret provider settings, see the root variable of the same name."
+}
+
 variable "secrets" {
   description = "Credentials from the Get stage (service => id => {username, secret}), so rotations can depend on other credentials."
   sensitive   = true

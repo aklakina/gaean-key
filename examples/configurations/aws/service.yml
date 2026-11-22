@@ -1,0 +1,5 @@
+---
+# Defaults merged under every aws config. Keeping this file also keeps the aws provider enabled
+# while you delete the last config (so its keys can be destroyed).
+expires_in: "${90*24}h"
+rotation_window: "${7*24}h"

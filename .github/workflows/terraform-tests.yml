@@ -43,6 +43,21 @@ jobs:
       run: |
         echo "Running Test Case B - Standard rotation test"
         tofu test -filter=tests/standard_rotation.tftest.hcl
+        # No cloud credentials are available in CI, so this also proves that the providers of
+        # unused extensions are never configured.
+
+    - name: Run Extension Unit Tests (Mock Providers)
+      run: |
+        filters=""
+        for f in tests/ext_*.tftest.hcl; do filters="$filters -filter=$f"; done
+        tofu test $filters
+
+    - name: Validate Example Configurations
+      run: |
+        # Activate all examples and validate the engine wiring with them (no provider calls).
+        cp -r examples/configurations/* configurations/
+        tofu validate
+        git checkout -- configurations && git clean -fdq configurations
 
     - name: Cleanup Test Resources
       if: always()
