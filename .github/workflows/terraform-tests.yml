@@ -51,6 +51,9 @@ jobs:
         git status --porcelain
         test -z "$(git status --porcelain)"
 
+    - name: Stack graph in the docs is up to date
+      run: python scripts/stack_graph.py --check docs/stacks.md
+
     - name: Format check
       run: |
         terramate fmt --check
@@ -79,6 +82,8 @@ jobs:
         cp -r examples/configurations/* configurations/
         python scripts/sync_stacks.py
         terramate generate
+        echo "Stack graph with all examples enabled:"
+        python scripts/stack_graph.py
         # no cloud credentials in CI: validate only (provider wiring, module inputs, generated code)
         terramate run -X -- tofu init -backend=false -input=false
         terramate run -X -- tofu validate
