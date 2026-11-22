@@ -1,0 +1,6 @@
+---
+# Client secret of an app registration used by a SaaS integration that only supports
+# client-credentials with a secret (no federated credentials).
+client_id: 11111111-1111-1111-1111-111111111111
+expires_in: "${180*24}h"
+rotation_window: "${14*24}h"

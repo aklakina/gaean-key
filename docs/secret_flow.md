@@ -2,15 +2,16 @@
 
 The secret flow follows this pattern:
 
-1. Configurations are loaded from the `configurations/` directory, merged with the optional `service.yml` defaults and parsed by the config processor (Engine)
-2. Secrets are retrieved from credential management systems (Get component)
-3. Secrets are rotated using service-specific rotation logic with a dual-phase mechanism (Rotation component). Rotations receive the retrieved secrets, so a rotated credential can depend on another one
-4. Retrieved and rotated secrets are merged per service into a central secret map; the same `service`/`id` may not be both retrieved and rotated (Engine)
-5. Secrets are deployed to target systems as configured (Deployment component)
+1. `scripts/sync_stacks.py` reads the `configurations/` directory and writes one Terramate stack per credential (get, rotation) and per deployment unit. A `service`/`id` may not be both retrieved and rotated, and every referenced credential must have a producer (Engine)
+2. Inside each stack the generated code loads its configuration files, merged with the optional `service.yml` defaults (Engine)
+3. Secrets are retrieved from credential management systems, one stack per credential (Get component)
+4. Secrets are rotated using service-specific rotation logic with a dual-phase mechanism, one stack per credential (Rotation component). A rotation whose extension takes `secrets` receives the credentials its configuration references, so a rotated credential can depend on another one
+5. Every producer stack exports its active credential; every consumer stack imports exactly the credentials its configurations reference (Terramate outputs sharing) and runs after their producers (Engine)
+6. Secrets are deployed to target systems as configured (Deployment component)
 
 ## Components and their purposes
 
-For detailed explanations and examples of each component, please refer to the [Extension Development](./extension_development.md) documentation.
+For detailed explanations and examples of each component, please refer to the [Extension Development](./extension_development.md) documentation, and to [Stacks](./stacks.md) for how the stacks are wired.
 
 ### Get
 
@@ -24,13 +25,14 @@ The output of the Rotate component is the same as the Get component, a map of se
 
 The rotation engine uses a **dual-phase mechanism** to ensure zero-downtime credential rotation:
 
-- Every rotation config runs as two module instances, **phase 1** and **phase 2**. With expiry `E` (`expires_in`) and rotation window `W` (`rotation_window`, default 20% of `E`), starting at `t0`:
+- Every rotation stack runs its extension as two module instances, **phase 1** and **phase 2**. With expiry `E` (`expires_in`) and rotation window `W` (`rotation_window`, default 20% of `E`), starting at `t0`:
   - phase 1 exists in `[t0, t0 + E)` and `[t0 + 2E - W, t0 + 2E)`,
   - phase 2 exists in `[t0 + E - W, t0 + 2E)`,
   - consumers get the phase 2 credential in `[t0 + E - W, t0 + 2E - W)` and the phase 1 credential otherwise.
 - So the old and the new credential are both valid for `W` around every switch, and each credential lives at most `E`.
-- `time_rotating` resources track the `2E` cycle and `plantimestamp()` decides which phases currently exist. These resources use `create_before_destroy`; see [the ADR](./adr/20260303-fix-circular-dependency-in-rotation-lifecycle.md) for why.
-- The set of rotated services and ids is known at plan time (only the values may be known after apply), so consumers can plan which resources a rotation cascades into.
+- `modules/rotation_schedule` tracks the `2E` cycle with `time_rotating` and `plantimestamp()` decides which phases currently exist (the arithmetic is in `modules/rotation_schedule/phases`, unit tested with `tofu test`). These resources use `create_before_destroy`; see [the ADR](./adr/20260303-fix-circular-dependency-in-rotation-lifecycle.md) for why.
+- Each stack's `schedule` output shows the cycle start and which phases are active.
+- Rotation is time driven: run the rotation stacks on a schedule together with their dependents (`terramate run --tags rotation --include-all-dependents ...`, see [Quick Start](./quick_start.md#scheduled-rotation)). A consumer sees a new credential once the rotation stack has been applied.
 
 ### Deployment
 

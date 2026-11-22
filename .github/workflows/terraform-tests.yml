@@ -1,4 +1,4 @@
-name: OpenTofu Tests
+name: Terramate Tests
 
 on:
   push:
@@ -7,8 +7,12 @@ on:
     branches: [ master ]
   workflow_dispatch:
 
+env:
+  ROTATION_STACK: stacks/test_service/rotation/dynamic-cred
+  DEPLOYMENT_STACK: stacks/test_service/deployment/consumer1
+
 jobs:
-  tofu-tests:
+  terramate-tests:
     runs-on: ubuntu-latest
 
     steps:
@@ -18,37 +22,120 @@ jobs:
     - name: Setup OpenTofu
       uses: opentofu/setup-opentofu@v1
       with:
-        # >= 1.13 is required for the convert() function used by the rotation engine
-        tofu_version: "~1.13.0"
+        tofu_version: "~1.12.0"
+        # the e2e checks below parse tofu output with jq
+        tofu_wrapper: false
 
-    - name: OpenTofu Format Check
-      run: tofu fmt -check -recursive
+    - name: Setup Terramate
+      uses: terramate-io/terramate-action@v2
+      with:
+        version: "0.17.1"
 
-    - name: Initialize OpenTofu
-      run: tofu init
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
 
-    - name: Run Test Case A - Duplicate Credentials (Should Fail)
+    - name: Install Python dependencies
+      run: pip install pyyaml
+
+    - name: Unit tests of the stack sync script
+      run: python -m unittest discover -s tests -v
+
+    - name: Stacks are in sync with the configurations
+      run: python scripts/sync_stacks.py --check
+
+    - name: Generated code is up to date
       run: |
-        echo "Setting up Test Case A - Creating duplicate configuration"
-        # Create duplicate configuration to trigger conflict
+        terramate generate
+        git status --porcelain
+        test -z "$(git status --porcelain)"
+
+    - name: Format check
+      run: |
+        terramate fmt --check
+        tofu fmt -check -recursive
+
+    - name: Rotation phase arithmetic tests
+      run: |
+        tofu -chdir=modules/rotation_schedule/phases init -input=false
+        tofu -chdir=modules/rotation_schedule/phases test
+
+    - name: Extension unit tests (mock providers)
+      run: |
+        for tests in extensions/*/*/tests; do
+          component=$(dirname "$tests")
+          echo "::group::$component"
+          tofu -chdir="$component" init -input=false
+          tofu -chdir="$component" test
+          echo "::endgroup::"
+        done
+
+    - name: Validate the example configurations as stacks
+      run: |
+        # In a separate worktree, so the stacks of the e2e test below stay untouched.
+        git worktree add --detach "$RUNNER_TEMP/examples" HEAD
+        cd "$RUNNER_TEMP/examples"
+        cp -r examples/configurations/* configurations/
+        python scripts/sync_stacks.py
+        terramate generate
+        # no cloud credentials in CI: validate only (provider wiring, module inputs, generated code)
+        terramate run -X -- tofu init -backend=false -input=false
+        terramate run -X -- tofu validate
+
+    - name: Test Case A - Duplicate credentials are rejected
+      run: |
         cp configurations/test_service/rotation/dynamic-cred.yml configurations/test_service/rotation/static-cred.yml
-
-        echo "Running duplicate credentials test"
-        tofu test -filter=tests/duplicate_credentials.tftest.hcl
-
-        echo "Cleaning up duplicate configuration"
+        if python scripts/sync_stacks.py --check; then
+          echo "::error::a credential that is both retrieved and rotated was not rejected"
+          exit 1
+        fi
         rm -f configurations/test_service/rotation/static-cred.yml
 
-    - name: Run Test Case B - Standard Rotation (Should Pass)
-      run: |
-        echo "Running Test Case B - Standard rotation test"
-        tofu test -filter=tests/standard_rotation.tftest.hcl
+    - name: Initialize stacks
+      run: terramate run --enable-sharing --mock-on-fail -- tofu init -input=false
 
-    - name: Cleanup Test Resources
+    - name: Test Case B - Standard rotation
+      run: |
+        check_consumer() {
+          expected=$(tofu -chdir="$ROTATION_STACK" output -json credential | jq -r .secret)
+          deployed=$(tofu -chdir="$DEPLOYMENT_STACK" show -json \
+            | jq -r '[.. | objects | select(.address? == "module.extension.module.consumer1[\"b\"].terraform_data.main[\"consume2\"]")][0].values.input.secret')
+          echo "rotation schedule: $(tofu -chdir="$ROTATION_STACK" output -json schedule)"
+          if [ "$expected" != "$deployed" ]; then
+            echo "::error::consumer has not got the active rotated credential"
+            exit 1
+          fi
+        }
+
+        echo "Initial deployment (phase 1)"
+        terramate run --enable-sharing -- tofu apply -auto-approve -input=false
+        check_consumer
+        first=$(tofu -chdir="$ROTATION_STACK" output -json credential | jq -r .secret)
+
+        echo "Nothing left to change"
+        terramate run --enable-sharing -- tofu plan -input=false -detailed-exitcode \
+          || { echo "::error::stacks are not converged"; exit 1; }
+
+        # expires_in = 2m, rotation_window = 1m: phase 2 is created and used from t0 + 1m
+        sleep 70
+        echo "Rotation window: phase 2 becomes active, consumers follow"
+        terramate run --enable-sharing --tags rotation --include-all-dependents -- tofu apply -auto-approve -input=false
+        check_consumer
+        second=$(tofu -chdir="$ROTATION_STACK" output -json credential | jq -r .secret)
+        if [ "$first" = "$second" ]; then
+          echo "::error::credential was not rotated"
+          exit 1
+        fi
+
+        # from t0 + 2m only phase 2 exists
+        sleep 60
+        echo "Phase 1 expired and is destroyed"
+        terramate run --enable-sharing --tags rotation --include-all-dependents -- tofu apply -auto-approve -input=false
+        check_consumer
+
+    - name: Cleanup test resources
       if: always()
       run: |
-        echo "Cleaning up any remaining test resources"
-        # Destroy any remaining test infrastructure
-        tofu destroy -auto-approve || true
-        # Clean up any duplicate config files that might remain
         rm -f configurations/test_service/rotation/static-cred.yml
+        terramate run --reverse --enable-sharing --mock-on-fail -X -- tofu destroy -auto-approve -input=false || true

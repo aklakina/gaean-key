@@ -58,7 +58,7 @@ When a `service.yml` file exists in a service folder, its contents are merged as
 Each extension component must adhere to the structure expected by the core engine:
 ### Generic constraints
 
-The engine **always** passes the defined configurations as a parameter to the component (named `configurations`, `configs`, or `configuration`, depending on how the component is wired in `modules/`). If this is not defined as a variable, OpenTofu will fail to run the project.
+The engine **always** passes the defined configurations as a parameter to the component (named `configurations`, `configs`, or `configuration`: the stack sync script uses whichever of these the component declares). If none is declared, `scripts/sync_stacks.py` fails.
 
 The engine always provides the configurations defined by the extension and the component **exclusively**. This means each component can have a typed definition for the configuration it expects.
 
@@ -131,20 +131,37 @@ The extension itself should create a credential valid for (at least) `expires_in
 
 ##### Inputs
 
-The engine has the retrieved credentials (Get stage) available in the rotate module as `var.secrets`, so a rotation can depend on another credential (e.g. use one credential to mint another). Pass it to the extension if it needs it.
+If the rotation component declares a `secrets` variable, the engine passes it the credentials the configuration references (any nested `{service, id}` mapping, e.g. `parent: {service: x, id: y}`), so a rotation can depend on another credential (e.g. use one credential to mint another). The same holds for Get components.
 
 ##### Wiring
 
-Each rotated service needs a `phase1`/`phase2` module pair in `modules/rotate/modules.tf` (one instance per config, so a phase change only touches that config) and an entry in `modules/rotate/outputs.tf` that picks the active phase. Use `modules/rotate/modules.tf` and `outputs.tf` of `test_service` as the template. The output keeps the set of services and ids known at plan time; keep it that way (build the maps with `for` expressions, not `merge()` over whole module outputs).
+None. Every rotation configuration becomes its own stack (`stacks/<service>/rotation/<id>/`) whose generated code runs the component as a `phase1`/`phase2` module pair, driven by `modules/rotation_schedule`. Each phase instance receives `{ "<id>" = <config> }` and the engine reads `secret["<id>"]` (or `secrets["<id>"]`) of the active phase, so key the output by the configuration key.
 
 #### Deployment
 
 ##### Configurations
 
-The deployment configurations are organized into sub-type folders within the `deployment/` directory of a service. The engine uses the config processor (`modules/config_processor.jinja2`) to build a nested map from the folder structure, which is then passed to the deployment extension: `configurations/<service>/deployment/<sub_type>/<group>/<name>.yml` becomes `configs.<service>.<sub_type>.<group>.<name>`.
+The deployment configurations are organized into sub-type folders within the `deployment/` directory of a service. Each sub-type folder is one deployment unit and one stack (`stacks/<service>/deployment/<sub_type>/`). The engine uses the config processor (`modules/config_processor.jinja2`) to build a nested map from the folder structure and passes the sub-type's subtree to the deployment component: `configurations/<service>/deployment/<sub_type>/<group>/<name>.yml` becomes `configurations.<group>.<name>` of the `<sub_type>` stack (the same map the component got per sub-type before the move to stacks).
 
 Every deployment configuration also gets a `config_file` key with its path relative to the repo root (e.g. `configurations/test_service/deployment/consumer1/a/consume1.yml`), for example to put a "managed by" notice on the deployed resources. Typed `object` variables simply drop it if the extension does not declare it.
 
 ##### Inputs
 
-In addition to the configurations and `secrets`, a deployment module may receive provider aliases to interact with the appropriate service instances (e.g. several organizations of the same service). Declare them in `versions.tf` of the root and thread them through `modules/deploy` to the extension.
+The `secrets` input only contains the credentials the unit's configurations reference (plus the `none`/`TBD` placeholders), as `service => id => {username, secret}`.
+
+The sync script already rejects references to credentials that nothing produces. Consumers should still fail the plan with a clear message when a config references a credential that isn't in `secrets` (e.g. when the component is used outside the engine or in its tests): compare against the plan-time-known ids (`nonsensitive({ for s, c in var.secrets : s => keys(c) })`) in a `precondition`, as the `github` and `azure_keyvault` extensions do.
+
+A Store component (`extensions/<service>/store/`) serves the `deployment/` configurations of its service exactly like a Deployment component; the engine uses `deployment/` if both exist.
+
+#### Extension providers
+
+There is no root module to declare provider aliases in any more: every stack has its own root module and configures only the providers of its own extension. A component that needs a configured provider ships a `gaean.tm.hcl` next to its `.tf` files (imported by every stack using it) with the provider block and the provider's source; see [Stacks](./stacks.md#provider-configuration) and `extensions/gitlab/rotation/gaean.tm.hcl`. Configure credentials through the provider's environment variables, non-secret settings through the global `provider_settings.<provider>`. Different instances of a service (e.g. several organizations) get their settings per stack folder.
+
+#### Adding an extension
+
+1. Implement the component(s) in `extensions/<service>/<component>/` following the constraints above, plus a `gaean.tm.hcl` if it needs a provider.
+2. Add unit tests in `extensions/<service>/<component>/tests/*.tftest.hcl` with `mock_provider` blocks (they run against the component itself: `tofu -chdir=extensions/<service>/<component> test`), and an example configuration in `examples/configurations/<service>/`.
+3. Add configurations under `configurations/<service>/<stage>/`.
+4. Run `python scripts/sync_stacks.py` and `terramate generate`, and commit the result.
+
+The sync script detects the configuration variable name and the output name from the component's `.tf` files and fails with a clear error if the contract is not met. The extensions in [Available Extensions](./available_extensions.md) make good templates.

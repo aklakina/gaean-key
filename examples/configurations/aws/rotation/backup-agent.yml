@@ -1,0 +1,5 @@
+---
+# Static access key for an on-prem backup appliance that can only be configured with an access key
+# pair (no IAM Roles Anywhere / OIDC support). The user must not have other access keys: AWS allows
+# two per user and the dual-phase rotation uses both during the rotation window.
+user: backup-agent
