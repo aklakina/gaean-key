@@ -18,6 +18,11 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # Full history and branches: Terramate's git safeguards compare HEAD with origin/master,
+        # and --changed needs the merge base. A shallow checkout fails with
+        # "unable to reach remote default branch".
+        fetch-depth: 0
 
     - name: Setup OpenTofu
       uses: opentofu/setup-opentofu@v1
