@@ -1,0 +1,4 @@
+# Terramate compares the generated _gaean_*.tf files byte for byte. A CRLF checkout (Git for Windows'
+# default core.autocrlf=true) makes it treat them as manually edited, and every `terramate generate` /
+# `terramate run` then fails ("manually defined code found", "outdated code found"). Keep LF everywhere.
+* text=auto eol=lf
