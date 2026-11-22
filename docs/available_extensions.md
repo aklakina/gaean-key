@@ -11,15 +11,26 @@
 
 Ready-to-adapt configurations for all of them are in [`examples/configurations/`](../examples/configurations); copy the ones you need into `configurations/`.
 
-## Enabling a service and its provider
+## Providers and their settings
 
-Every extension above (except `test_service`) needs a provider. The engine creates a provider instance for a service **only while `configurations/<service>/` contains a `.yml` file** (a config or a `service.yml`), so you only need credentials for the services you actually use.
+Every extension above (except `test_service`) needs a provider. Each extension component ships a `gaean.tm.hcl` that configures its provider in every stack running it, so a stack only ever configures the provider of its own extension and you only need credentials for the services you actually use.
 
-- **Credentials** come from the provider's standard environment variables (listed per extension below), so nothing secret needs to be in the repository or in tfvars.
-- **Non-secret settings** (region, GitHub owner, GitLab URL, tenant, subscription) can also be set with the optional root variable `provider_settings`, see [`versions.tf`](../versions.tf).
-- **Retiring a service**: delete its configs and apply (this destroys the credentials), then delete its `service.yml`. If you delete the whole folder at once, the provider disappears before OpenTofu can destroy the credentials ("Provider instance not present"); restore `service.yml` and apply again.
+- **Credentials** come from the provider's standard environment variables (listed per extension below), so nothing secret needs to be in the repository.
+- **Non-secret settings** (region, GitHub owner, GitLab URL, tenant, subscription) can be set with the optional Terramate globals `provider_settings.<provider>`, e.g. in `stacks/providers.tm.hcl`, followed by `terramate generate` (see [Stacks](./stacks.md#provider-configuration)):
 
-All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when OpenTofu runs, so run `tofu apply` on a schedule well under half the rotation window (e.g. a daily pipeline): a switch happens at the first run after its boundary, and that delay comes out of the overlap.
+  ```hcl
+  globals "provider_settings" "github" {
+    owner = "my-org"
+  }
+  globals "provider_settings" "gitlab" {
+    base_url = "https://gitlab.example.com/api/v4"
+  }
+  ```
+
+  Settings in a `*.tm.hcl` deeper in `stacks/` (e.g. `stacks/github/`) override those above it.
+- **Retiring a service**: destroy its stacks first (`terramate run --chdir stacks/<service> --reverse --enable-sharing --mock-on-fail -- tofu destroy`), then delete its configurations and run `python scripts/sync_stacks.py --prune`. Each stack keeps its provider until the stack itself is removed.
+
+All rotations follow the engine's dual-phase scheme: every config needs `expires_in` and may set `rotation_window` (default 20% of `expires_in`), see [Secret Flow](./secret_flow.md#rotate). Rotation only happens when the stacks run, so apply the rotation stacks with their dependents on a schedule well under half the rotation window (a switch happens at the first run after its boundary, and that delay comes out of the overlap) (e.g. a daily pipeline running `terramate run --enable-sharing --tags rotation --include-all-dependents -- tofu apply -auto-approve`).
 
 ---
 
@@ -39,7 +50,7 @@ rotation_window: "${7*24}h"
 
 Provides `aws/<id>` with `username` = access key id, `secret` = secret access key.
 
-- **Credentials**: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, SSO, or any other source of the AWS provider; region from `AWS_REGION` or `provider_settings.aws.region`. Needs `iam:CreateAccessKey`, `iam:DeleteAccessKey`, `iam:ListAccessKeys` on the users.
+- **Credentials**: `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`, SSO, or any other source of the AWS provider; region from `AWS_REGION` or the global `provider_settings.aws.region`. Needs `iam:CreateAccessKey`, `iam:DeleteAccessKey`, `iam:ListAccessKeys` on the users.
 - **Two-key limit**: AWS allows two access keys per user and both are in use during the rotation window, so the user must not have any other access keys.
 - Access keys don't expire in AWS; `expires_in` only sets how long a key is used before it is replaced.
 
@@ -60,7 +71,7 @@ rotation_window: "${14*24}h"
 
 Provides `azuread/<id>` with `username` = client id, `secret` = client secret. The secret's `end_date` in Entra ID is its creation time + `expires_in` + `rotation_window` (the time its phase exists, so the old secret stays valid through the overlap), so an unrotated secret really stops working.
 
-- **Credentials**: the azuread provider's standard sources (`ARM_CLIENT_ID`/`ARM_CLIENT_SECRET`/`ARM_TENANT_ID`, OIDC, managed identity, Azure CLI); tenant also via `provider_settings.azuread.tenant_id`. The identity must be allowed to manage credentials of the apps (e.g. owner of the app registrations, or `Application.ReadWrite.OwnedBy`).
+- **Credentials**: the azuread provider's standard sources (`ARM_CLIENT_ID`/`ARM_CLIENT_SECRET`/`ARM_TENANT_ID`, OIDC, managed identity, Azure CLI); tenant also via the global `provider_settings.azuread.tenant_id`. The identity must be allowed to manage credentials of the apps (e.g. owner of the app registrations, or `Application.ReadWrite.OwnedBy`).
 
 ## GitLab project and group access tokens
 
@@ -84,7 +95,7 @@ rotation_window: "${7*24}h"
 
 Provides `gitlab/<id>` with `username` = token name, `secret` = token.
 
-- **Credentials**: `GITLAB_TOKEN` (a token allowed to create access tokens on the projects/groups, e.g. a maintainer's or owner's); self-managed instances via `GITLAB_BASE_URL` or `provider_settings.gitlab.base_url`.
+- **Credentials**: `GITLAB_TOKEN` (a token allowed to create access tokens on the projects/groups, e.g. a maintainer's or owner's); self-managed instances via `GITLAB_BASE_URL` or the global `provider_settings.gitlab.base_url`.
 - The token's `expires_at` is the date of creation + `expires_in` + `rotation_window` (the time its phase exists), **rounded up** because GitLab expiry dates have day precision. The instance enforces a maximum lifetime (365 days by default), so keep `expires_in` + `rotation_window` + 1 day within it.
 
 ## GitHub Actions secrets
@@ -103,13 +114,13 @@ secret:
 
 | Field | Required | Description |
 |---|---|---|
-| `repository` | yes | Repository name (owner from `GITHUB_OWNER` or `provider_settings.github.owner`) |
+| `repository` | yes | Repository name (owner from `GITHUB_OWNER` or the global `provider_settings.github.owner`) |
 | `secret_name` | yes | Actions secret receiving the credential's secret |
 | `username_secret_name` | no | Actions secret receiving the credential's username |
 | `environment` | no | Create environment secrets in this environment instead of repository secrets |
 | `secret` | yes | `service`/`id` of the credential to deploy |
 
-- **Credentials**: `GITHUB_TOKEN` (or a GitHub App via the provider's `GITHUB_APP_*` variables) with permission to manage Actions secrets of the repositories; GitHub Enterprise Server via `GITHUB_BASE_URL` or `provider_settings.github.base_url`.
+- **Credentials**: `GITHUB_TOKEN` (or a GitHub App via the provider's `GITHUB_APP_*` variables) with permission to manage Actions secrets of the repositories; GitHub Enterprise Server via `GITHUB_BASE_URL` or the global `provider_settings.github.base_url`.
 - A reference to a credential that no extension retrieves or rotates fails the plan.
 
 ## Azure Key Vault secrets
@@ -136,7 +147,7 @@ secret:
 | `tags` | no | Extra tags; `managed-by = gaean-key` and `config-file = <path of the config>` are always added |
 | `secret` | yes | `service`/`id` of the credential to store |
 
-- **Credentials**: the azurerm provider's standard sources (`ARM_*` variables, OIDC, managed identity, Azure CLI); subscription from `ARM_SUBSCRIPTION_ID` or `provider_settings.azurerm.subscription_id`. The identity needs to set secrets in the vault (e.g. the *Key Vault Secrets Officer* role).
+- **Credentials**: the azurerm provider's standard sources (`ARM_*` variables, OIDC, managed identity, Azure CLI); subscription from `ARM_SUBSCRIPTION_ID` or the global `provider_settings.azurerm.subscription_id`. The identity needs to set secrets in the vault (e.g. the *Key Vault Secrets Officer* role).
 - A reference to a credential that no extension retrieves or rotates fails the plan.
 
 ---

@@ -1,8 +1,8 @@
 # Gaean Key
 
-[![OpenTofu Tests](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml/badge.svg)](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml)
+[![Terramate Tests](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml/badge.svg)](https://github.com/aklakina/gaean-key/actions/workflows/terraform-tests.yml)
 
-**Rotate the credentials you can't federate.** Gaean Key is an OpenTofu project that mints, rotates and distributes long-lived credentials (API tokens, client secrets, access keys) from YAML files in Git, with a zero-downtime overlap between the old and the new credential.
+**Rotate the credentials you can't federate.** Gaean Key mints, rotates and distributes long-lived credentials (API tokens, client secrets, access keys) from YAML files in Git, with a zero-downtime overlap between the old and the new credential. It runs on [Terramate](https://terramate.io/) stacks and OpenTofu: every credential and every deployment unit is its own stack, so a rotation only touches that credential and the stacks that consume it.
 
 ```yaml
 # configurations/gitlab/rotation/mirror-read.yml: a GitLab token, replaced every 60 days
@@ -19,7 +19,7 @@ secret_name: GITLAB_TOKEN
 secret: { service: gitlab, id: mirror-read }
 ```
 
-A scheduled `tofu apply` does the rest: it creates the next token before the current one expires, switches every consumer over, and deletes the old token only after the overlap window. Changes are reviewed as pull requests, and `tofu plan` shows exactly which credentials and consumers a run will touch.
+A scheduled `terramate run -- tofu apply` does the rest: it creates the next token before the current one expires, switches every consumer over, and deletes the old token only after the overlap window. Changes are reviewed as pull requests, and `terramate run --changed --include-all-dependents -- tofu plan` touches exactly the credentials and consumers a change affects.
 
 ## When to use Gaean Key (and when not to)
 
@@ -43,15 +43,16 @@ It is **not** a fit when you need per-request, minutes-long credentials (use dyn
 | **External Secrets Operator** | ❌ | ❌ (generators for a few types) | ✅ into Kubernetes | operator in the cluster | Kubernetes consumers |
 | **CI/CD secret stores** (GitHub, GitLab, Azure DevOps variables) | ❌ | ❌ | that CI system only | the CI system | one tool |
 | **Cron scripts** | ❌ | ✅ whatever you write | whatever you write | wherever they run | ad hoc |
-| **Gaean Key** | ❌ | ✅ via extensions | ✅ via extensions, many targets per credential | `tofu apply` in a scheduled pipeline, no server | any provider OpenTofu has |
+| **Gaean Key** | ❌ | ✅ via extensions | ✅ via extensions, many targets per credential | Terramate + OpenTofu in a scheduled pipeline, no server | any provider OpenTofu has |
 
 They combine well: run Gaean Key in a pipeline that authenticates to the clouds with federation, and use it to store rotated credentials in Vault or a cloud secret manager for consumers that already read from there.
 
 ### Trade-offs to know about
 
-- **Secrets pass through OpenTofu state.** Rotated values end up in the state (and plan) files, like with any OpenTofu-managed credential. Use OpenTofu's [client-side state and plan encryption](https://opentofu.org/docs/language/state/encryption/) and a backend only the rotation pipeline can read.
-- **Rotation happens when OpenTofu runs.** Each switch happens at the first run after its boundary, and that delay comes out of the overlap window, so schedule `tofu apply` at intervals well under half the rotation window (for example daily for a 7-day window); a missed run is then still caught up within the overlap.
+- **Secrets pass through OpenTofu state.** Rotated values end up in the state (and plan) files of the stacks, like with any OpenTofu-managed credential. Generate a backend only the rotation pipeline can read and OpenTofu's [client-side state and plan encryption](https://opentofu.org/docs/language/state/encryption/) into the stacks (see [Stacks](./docs/stacks.md#state-backend)).
+- **Rotation happens when the stacks run.** Each switch happens at the first run after its boundary, and that delay comes out of the overlap window, so schedule the rotation run at intervals well under half the rotation window (for example daily for a 7-day window); a missed run is then still caught up within the overlap.
 - **Lifetimes are days to months, not minutes.** That is the point (long-lived credentials for consumers that need them), but it is not a substitute for dynamic secrets.
+- **Secrets pass between stacks as environment variables.** Terramate outputs sharing reads a producer's credential with `tofu output -json` and hands it to each consumer's `tofu` process as a `TF_VAR_*` environment variable. Anything that can read the runner's process environment or dump it (debug logging, a compromised step in the same job) can see those credentials, so run the stacks on a dedicated runner and keep shell tracing and environment dumps out of the rotation pipeline.
 - **The pipeline is privileged.** It can mint credentials, so protect it like any other deployment pipeline.
 
 ## How rotation works
@@ -77,7 +78,7 @@ Consumers always get the newest key; the previous one stays valid for `W`, so an
 | `github` | Deployment | GitHub Actions repository and environment secrets |
 | `azure_keyvault` | Store | Azure Key Vault secrets |
 
-A provider is only configured for the services you have configurations for, so you only need credentials for what you use. Details and examples: [Available Extensions](./docs/available_extensions.md) and [`examples/configurations/`](./examples/configurations). New services are small modules following the [extension contract](./docs/extension_development.md).
+Every stack configures only the provider of its own extension, so you only need credentials for the services you use. Details and examples: [Available Extensions](./docs/available_extensions.md) and [`examples/configurations/`](./examples/configurations). New services are small modules following the [extension contract](./docs/extension_development.md); no engine change is needed to wire them in.
 
 ## Documentation
 
@@ -86,11 +87,12 @@ A provider is only configured for the services you have configurations for, so y
 1. [Quick Start](./docs/quick_start.md)
 2. [High Level Overview](./docs/high_level_overview.md)
 3. [Architecture Overview](./docs/architecture_overview.md)
-4. [Secret Flow](./docs/secret_flow.md)
-5. [Extension Development](./docs/extension_development.md)
-6. [Available Extensions](./docs/available_extensions.md)
-7. [Troubleshooting](./docs/troubleshooting.md)
-8. [Engine implementations](./docs/engine_implementations.md) (root module vs. Terramate stacks)
+4. [Stacks](./docs/stacks.md)
+5. [Secret Flow](./docs/secret_flow.md)
+6. [Extension Development](./docs/extension_development.md)
+7. [Available Extensions](./docs/available_extensions.md)
+8. [Troubleshooting](./docs/troubleshooting.md)
+9. [Engine implementations](./docs/engine_implementations.md) (root module vs. Terramate stacks)
 
 ## License
 

@@ -2,31 +2,37 @@
 
 ## Common Issues
 
-1. **Extension not found**
-	- Verify extension exists in `extensions/` directory
-	- Check extension structure follows required format
+1. **`sync_stacks.py`: the extension component does not exist / declares none of the variables or outputs**
+	- Verify the extension exists in `extensions/<service>/<stage>/` (the folder names must match the configuration folders)
+	- Check the component follows the [contract](./extension_development.md#extension-requirements): a `configurations`/`configs`/`configuration` variable, a `secret`/`secrets` output for providers, a `secrets` variable for deployments
 2. **Configuration not loading**
 	- Verify YAML files are placed in the correct `configurations/<service>/<stage>/` directory and end in `.yml`
 	- Ensure YAML syntax is valid
 	- Check that the `service.yml` (if used) does not conflict with individual config values (file values win)
-3. **Extension not linked properly**
-	- Verify that you have edited the `modules/<component>/main.tf` (for rotations: the `phase1`/`phase2` pair in `modules/rotate/modules.tf`) properly to add the link to your new extension
-4. **Engine reports no secret exists with referenced service and id**
-	- In case of new extension, verify that you have also linked the output of your extension in `modules/<component>/outputs.tf` properly
-	- In case of existing extension, verify that the configuration actually exists and which component outputs it
+	- Rerun `python scripts/sync_stacks.py` and `terramate generate` after adding or moving files
+3. **`sync_stacks.py`: no get or rotation config produces `<service>/<id>`**
+	- Verify that the configuration actually exists and is enabled (`.yml`, not `.yml.old`)
+	- The id is the file path below `get/` or `rotation/` without `.yml` (e.g. `team/token` for `rotation/team/token.yml`)
 	- Double-check the `secret.service` / `secret.id` values in the consumer configuration
-5. **Conflict detected: the same credential ID exists in both get and rotation**
-	- A `service`/`id` can either be retrieved or rotated, not both. Rename or remove one of the configurations
-6. **Rotation not triggering**
-	- Verify the `expires_in` property is defined in the rotation configuration
-	- Check the `time_rotating` resource state — it may need to be tainted to force a rotation
+4. **Conflict: credential is produced by both ... A service/id can either be retrieved or rotated, not both**
+	- Rename or remove one of the configurations
+5. **Terramate: "repository has untracked files" / "uncommitted changes" / "outdated code"**
+	- Commit the stacks and generated files, or run `terramate generate`; for local experiments pass `-X` (`--disable-safeguards=all`)
+6. **A consumer has the mock credential (`mock`/`mock`) or an old one**
+	- `--enable-sharing` was missing, or the producer stack had not been applied yet when the consumer ran. Apply the producer and its dependents: `terramate run --chdir <producer stack> --include-all-dependents --enable-sharing -- tofu apply`
+	- `--mock-on-fail` only belongs to `init`/`plan`/`destroy`. Applying with mock credentials fails with "Refusing to apply with mock credentials": apply the producer stacks first (or the whole graph in order with `terramate run --enable-sharing -- tofu apply`)
+7. **Rotation not triggering**
+	- Rotation is time driven: make sure the rotation stacks are applied on a schedule (`--tags rotation --include-all-dependents`), `--changed` alone does not select them
+	- Check the stack's `schedule` output (`tofu -chdir=stacks/<service>/rotation/<id> output schedule`)
+	- Check the `time_rotating` resource state — it may need to be tainted (`module.schedule.time_rotating.cycle_timer`) to force a rotation
 	- Ensure the `rotation_window` (if specified) is shorter than `expires_in`
-	- Rotation only happens when OpenTofu runs: check that the scheduled `tofu apply` actually runs
-7. **"Provider instance not present" after removing a service**
-	- The service's whole folder was deleted while its credentials still exist, so its provider is gone before they can be destroyed
-	- Restore `configurations/<service>/service.yml` (any `.yml` in the folder re-enables the provider), apply, then delete it
-8. **Provider credential errors for a service you don't use**
-	- A provider is configured as soon as `configurations/<service>/` contains any `.yml` file; remove the folder (after its credentials are destroyed, see above)
+8. **`sync_stacks.py` reports an orphan**
+	- Its configuration was removed: destroy the stack, then run `python scripts/sync_stacks.py --prune` (see [Quick Start](./quick_start.md#removing-a-configuration))
+	- If the configuration is already gone, the stack can still be destroyed: its generated code reads the YAML, so restore the file (e.g. `git checkout <rev> -- <file>`), destroy, delete it again
+9. **Provider "requires explicit configuration" / authentication errors although settings are set**
+	- The stack's root module must declare the provider's source: the extension's `gaean.tm.hcl` sets `gaean_required_providers` (see [Stacks](./stacks.md#provider-configuration)); without it e.g. `provider "gitlab"` configures `hashicorp/gitlab` and the extension gets an unconfigured `gitlabhq/gitlab`. `tofu providers` in the stack should show a single entry per provider
+	- Run `terramate generate` after changing `provider_settings` globals or a `gaean.tm.hcl`
+	- Credentials come from the provider's environment variables only; check they are set in the job that runs `terramate run`
 
 ## Useful OpenTofu snippet for debug
 
@@ -37,3 +43,5 @@ resource "terraform_data" "debug" {
 	}
 }
 ```
+
+To inspect what the engine generated for a stack, read its `_gaean_*.tf` files; `terramate debug show globals` shows the `gaean` globals of every stack.
