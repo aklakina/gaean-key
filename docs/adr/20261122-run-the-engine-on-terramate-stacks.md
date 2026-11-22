@@ -61,6 +61,9 @@ not give Terramate the dependency graph (`--include-all-dependents`, mocks for p
 - A consumer's plan shows the producer's current output, not the one an upcoming apply of the producer
   will produce; a full preview of a rotation needs the producer applied first.
 - One state per stack: removing a configuration needs a destroy of its stack before `--prune`.
-- A Python step (`sync_stacks.py`, PyYAML) is part of the workflow, and its output must be committed.
+- A Python step (`sync_stacks.py`, PyYAML) is part of the workflow, and its output must be committed. The
+  committed stacks are what detects removed configurations (orphans) and what drives `--changed`. Two
+  branches adding configs to the same deployment unit conflict in its `stack.tm.hcl`; resolve that by
+  regenerating. See [Stacks](../stacks.md#why-the-stacks-are-committed).
 - State of the previous single root module is not migrated; existing deployments need imports or a
   fresh apply.

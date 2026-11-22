@@ -38,10 +38,50 @@ Every stack directory contains:
 | `_gaean_config.tf`     | `terramate generate`          | config loading (`service.yml` merge), placeholders, referenced secrets  |
 | `_gaean_<stage>.tf`    | `terramate generate`          | the extension call (and the rotation schedule for rotations)            |
 | `_gaean_sharing.tf`    | `terramate generate`          | `output "credential"` (producers) / one variable per referenced credential |
+| `_gaean_providers.tf`  | `terramate generate`          | provider block, if the extension ships a `gaean.tm.hcl`                 |
 
 Don't edit these files; change `configurations/`, `stacks/engine.tm.hcl` (the templates) or
 `scripts/sync_stacks.py` and regenerate. Any other file you put into `stacks/` (for example a
 `stacks/<service>/providers.tm.hcl`) is left alone by the script and inherited by the stacks below it.
+
+## Why the stacks are committed
+
+Everything in `stacks/` except your own `*.tm.hcl` files can be regenerated from `configurations/`, so
+leaving it out of git might seem tidier. It is committed on purpose. CI checks that it is up to date
+(`sync_stacks.py --check`, and no diff after `terramate generate`).
+
+**The `stack.tm.hcl` files must be committed:**
+
+- **Orphan safety.** `sync_stacks.py` finds stacks whose configuration was removed by looking at the stack
+  folders that exist. If they weren't in git, a fresh checkout would have no old stacks, so deleting a
+  YAML file would silently drop its stack. Its resources would stay in the state with no stack left to
+  destroy or rotate them, and the credential would never be revoked. With the stacks committed,
+  `--check` fails until the stack is destroyed and pruned
+  (see [Quick Start](./quick_start.md#removing-a-configuration)).
+- **Change detection and dependents.** `terramate run --changed --include-all-dependents` works from git
+  diffs of the stack folders and from the `after`/`input` wiring in them. A config starting to reference
+  a credential only shows up as a changed stack because its `stack.tm.hcl` changed.
+- **Review.** A new `input` block in a pull request shows directly which unit gets access to which
+  credential.
+
+**The generated `_gaean_*.tf` files are committed by default (the Terramate convention):**
+
+- Terramate does **not** mark stacks as changed when a parent `.tm.hcl` file changes, such as
+  `stacks/engine.tm.hcl` or an extension's `gaean.tm.hcl`. A template change reaches `--changed` only
+  through the generated files it rewrites.
+- Terramate's check that generated code is up to date keeps working, and git records exactly which
+  code was applied.
+
+Leaving out only the generated files is possible: add `stacks/**/_gaean_*.tf` to `.gitignore` and run
+`terramate generate` in CI before every `terramate run`. You then lose the two points above, so CI has to
+run all stacks whenever `stacks/engine.tm.hcl`, a `gaean.tm.hcl` or `scripts/sync_stacks.py` changes.
+Generated output may also change between Terramate versions.
+
+**Cost: merge conflicts.** Two branches that add configurations to the same deployment unit both
+edit its `stack.tm.hcl` (`watch`, `after`, `input` lists). Don't merge these files by hand. Take either
+side, then rerun `python scripts/sync_stacks.py` and `terramate generate`. Stack ids and input names are
+deterministic hashes of the paths, so regenerating never changes the identity of an existing stack
+(or the state key derived from it).
 
 ## Credential flow
 
