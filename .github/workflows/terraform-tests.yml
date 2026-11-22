@@ -107,7 +107,8 @@ jobs:
           echo "::error::apply with mock credentials was not refused"
           exit 1
         fi
-        if [ -n "$(tofu -chdir="$DEPLOYMENT_STACK" state list 2>/dev/null)" ]; then
+        # (data sources such as the rendered configs may be recorded; no managed resource may be)
+        if tofu -chdir="$DEPLOYMENT_STACK" state list 2>/dev/null | grep -v '^data\.' | grep -q .; then
           echo "::error::resources were created from mock credentials"
           exit 1
         fi
