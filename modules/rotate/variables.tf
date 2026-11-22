@@ -1,40 +1,40 @@
 variable "configs" {
-  type = map(map(any))
+  description = "Flat map of rotation configs. Keys are '<service>/<path>' (e.g. 'test_service/dynamic-cred'), values are the config data."
   validation {
-    # validity_duration must be set
     condition = alltrue([
-      for k, v in var.configs : alltrue([
-        for kk, vv in v : can(vv["validity_duration"])
-      ])
+      for path, config in var.configs : can(config.expires_in)
     ])
-    error_message = "Each rotation config must have 'validity_duration' set."
+    error_message = "expires_in must be provided in each rotation configuration."
   }
   validation {
-    # Can parse both validity_duration and rotation_window_duration (if set) with duration_parse
+    # expires_in and the optional rotation_window must be parsable durations (templates such as "${30*24}h" are allowed)
     condition = alltrue([
-      for k, v in var.configs : alltrue([
-        for kk, vv in v :
-        (
-          can(provider::time::duration_parse(vv["validity_duration"]))
-          && (
-            !can(vv["rotation_window_duration"])
-            || can(provider::time::duration_parse(vv["rotation_window_duration"]))
-          )
+      for path, config in var.configs : (
+        can(provider::time::duration_parse(templatestring(config.expires_in, {})))
+        && (
+          try(config.rotation_window, null) == null
+          || can(provider::time::duration_parse(templatestring(config.rotation_window, {})))
         )
-      ])
+      )
     ])
-    error_message = "Each rotation config must have 'validity_duration' and optional 'rotation_window_duration' parsable by duration_parse."
+    error_message = "expires_in and the optional rotation_window must be durations parsable by provider::time::duration_parse (e.g. \"720h\" or \"$${30*24}h\")."
   }
   validation {
-    # The validity_duration must be greater than the rotation_window_duration
     condition = alltrue([
-      for k, v in var.configs : alltrue([
-        for kk, vv in v : (
-          provider::time::duration_parse(try(vv["validity_duration"], "0s")).seconds >
-          provider::time::duration_parse(try(vv["rotation_window_duration"], "0s")).seconds
+      for path, config in var.configs : (
+        try(config.rotation_window, null) == null
+        || try(
+          provider::time::duration_parse(templatestring(config.expires_in, {})).seconds >
+          provider::time::duration_parse(templatestring(config.rotation_window, {})).seconds,
+          false
         )
-      ])
+      )
     ])
-    error_message = "Each rotation config must have 'validity_duration' greater than 'rotation_window_duration'."
+    error_message = "rotation_window must be shorter than expires_in."
   }
+}
+
+variable "secrets" {
+  description = "Credentials from the Get stage (service => id => {username, secret}), so rotations can depend on other credentials."
+  sensitive   = true
 }

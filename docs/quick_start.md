@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Terraform 1.11+
+- [OpenTofu](https://opentofu.org/) 1.13+ (the engine uses the OpenTofu-only `convert()` function)
 - [Credentials for services defined](#defining-service-credentials)
 
 ## Basic Usage
@@ -19,9 +19,9 @@ login_credentials = {
 }
 ```
 Exact variable definition can be seen in the [./versions.tf](../versions.tf) file
-### Run Terraform commands from repository root
+### Run OpenTofu commands from repository root
 ```bash
-terraform init [-upgrade]
-terraform plan -var-file ./creds.tfvars
-terraform apply -var-file ./creds.tfvars
+tofu init [-upgrade]
+tofu plan -var-file ./creds.tfvars
+tofu apply -var-file ./creds.tfvars
 ```

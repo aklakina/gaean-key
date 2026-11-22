@@ -1,4 +1,4 @@
-name: Terraform Tests
+name: OpenTofu Tests
 
 on:
   push:
@@ -8,46 +8,47 @@ on:
   workflow_dispatch:
 
 jobs:
-  terraform-tests:
+  tofu-tests:
     runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Terraform
-      uses: hashicorp/setup-terraform@v3
+    - name: Setup OpenTofu
+      uses: opentofu/setup-opentofu@v1
       with:
-        terraform_version: "~1.11.0"
+        # >= 1.13 is required for the convert() function used by the rotation engine
+        tofu_version: "~1.13.0"
 
-    - name: Terraform Format Check
-      run: terraform fmt -check -recursive
+    - name: OpenTofu Format Check
+      run: tofu fmt -check -recursive
 
-    - name: Initialize Terraform
-      run: terraform init
+    - name: Initialize OpenTofu
+      run: tofu init
 
     - name: Run Test Case A - Duplicate Credentials (Should Fail)
       run: |
         echo "Setting up Test Case A - Creating duplicate configuration"
         # Create duplicate configuration to trigger conflict
         cp configurations/test_service/rotation/dynamic-cred.yml configurations/test_service/rotation/static-cred.yml
-        
+
         echo "Running duplicate credentials test"
-        terraform test -filter=tests/duplicate_credentials.tftest.hcl
-        
+        tofu test -filter=tests/duplicate_credentials.tftest.hcl
+
         echo "Cleaning up duplicate configuration"
         rm -f configurations/test_service/rotation/static-cred.yml
 
     - name: Run Test Case B - Standard Rotation (Should Pass)
       run: |
         echo "Running Test Case B - Standard rotation test"
-        terraform test -filter=tests/standard_rotation.tftest.hcl
+        tofu test -filter=tests/standard_rotation.tftest.hcl
 
     - name: Cleanup Test Resources
       if: always()
       run: |
         echo "Cleaning up any remaining test resources"
         # Destroy any remaining test infrastructure
-        terraform destroy -auto-approve || true
+        tofu destroy -auto-approve || true
         # Clean up any duplicate config files that might remain
         rm -f configurations/test_service/rotation/static-cred.yml

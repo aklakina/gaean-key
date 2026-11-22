@@ -32,18 +32,22 @@ The system follows a modular architecture with these core components:
 # Project Structure
 
 ```
-Gaeam Key/
-├── main.tf                                # Main entry point for Terraform
+Gaean Key/
+├── main.tf                                # Main entry point for OpenTofu
+├── versions.tf                            # Required providers and provider configuration
 ├── credential_rotation_architecture.puml  # Architecture diagram
 ├── README.md                              # This documentation
-├── constants/                             # Shared Terraform outputs and constants
-├── modules                                # Core Terraform engine
-│   ├── load_configs/                      # Configuration loading
+├── constants/                             # Shared OpenTofu outputs and constants
+├── docs/adr/                              # Architecture decision records
+├── modules                                # Core OpenTofu engine
+│   ├── config_processor.jinja2            # Jinja2 template rebuilding the folder hierarchy of configs
+│   ├── load_configs/                      # Configuration loading (incl. service.yml defaults)
 │   ├── get/                               # Secret retrieval functionality
-│   ├── rotate/                            # Secret rotation functionality
+│   ├── rotate/                            # Secret rotation functionality (dual-phase; modules.tf wires the extensions)
 │   └── deploy/                            # Secret deployment functionality
 ├── configurations/                        # service-specific configurations
 │   └── <service>/                         # service-specific configuration folders
+│       ├── service.yml                    # (Optional) defaults merged under every config of the service
 │       ├── deployment/                    # Deployment configurations
 │       ├── rotation/                      # Rotation configurations
 │       └── get/                           # Retrieval configurations

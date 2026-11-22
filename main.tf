@@ -8,17 +8,45 @@ module "get_credentials" {
   configs = module.load_configs.configs["get"]
 }
 
+locals {
+  # Placeholder credentials consumers can reference (secret: {service: none, id: none})
+  # before the real credential exists.
+  credentials = merge(
+    module.get_credentials.credentials,
+    {
+      none = {
+        none = {
+          username = "none"
+          secret   = "none"
+        }
+      }
+      TBD = {
+        TBD = {
+          username = "TBD"
+          secret   = "TBD"
+        }
+      }
+    }
+  )
+}
+
 module "rotation" {
   source = "./modules/rotate"
 
   configs = module.load_configs.configs["rotation"]
+
+  # Retrieved credentials, so a rotation can depend on another credential.
+  secrets = local.credentials
 }
 
 locals {
+  # Service and id sets are plan-time known; only the values are sensitive.
+  get_ids      = { for service, creds in nonsensitive({ for s, c in local.credentials : s => keys(c) }) : service => creds }
+  rotation_ids = { for service, creds in nonsensitive({ for s, c in module.rotation.credentials : s => keys(c) }) : service => creds }
+
   duplicate_ids = flatten([
-    for service in distinct(concat(keys(module.get_credentials.credentials), keys(module.rotation.credentials))) : [
-      for id in keys(lookup(module.get_credentials.credentials, service, {})) :
-      "${service}.${id}" if contains(keys(lookup(module.rotation.credentials, service, {})), id)
+    for service, ids in local.get_ids : [
+      for id in ids : "${service}.${id}" if contains(lookup(local.rotation_ids, service, []), id)
     ]
   ])
 }
@@ -41,10 +69,11 @@ resource "terraform_data" "conflict_check" {
 }
 
 locals {
+  # Merged per service, so a service can both retrieve and rotate credentials.
   merged_credentials = {
-    for service in distinct(concat(keys(module.get_credentials.credentials), keys(module.rotation.credentials))) :
+    for service in distinct(concat(keys(local.get_ids), keys(local.rotation_ids))) :
     service => merge(
-      lookup(module.get_credentials.credentials, service, {}),
+      lookup(local.credentials, service, {}),
       lookup(module.rotation.credentials, service, {})
     )
   }

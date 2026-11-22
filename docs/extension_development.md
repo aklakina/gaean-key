@@ -3,15 +3,20 @@
 <!-- TOC -->
 * [Extension Development](#extension-development)
   * [Extension Structure](#extension-structure)
+  * [Configuration Structure](#configuration-structure)
   * [Extension Requirements](#extension-requirements)
     * [Generic constraints](#generic-constraints)
     * [Component type specific constraints](#component-type-specific-constraints)
       * [Providers](#providers)
       * [Consumers](#consumers)
     * [Component specific constraints](#component-specific-constraints)
-        * [Deployment](#deployment)
-          * [Configurations](#configurations)
-          * [Inputs](#inputs)
+      * [Rotation](#rotation)
+        * [Configurations](#configurations)
+        * [Inputs](#inputs)
+        * [Wiring](#wiring)
+      * [Deployment](#deployment)
+        * [Configurations](#configurations-1)
+        * [Inputs](#inputs-1)
 <!-- TOC -->
 
 ## Extension Structure
@@ -19,22 +24,41 @@
 An extension should implement one or more of these components:
 
 ```
-configurations/<service>/
-├── deployment/          # Deployment configurations
-├── rotation/            # Rotation configurations
-└── get/                 # Retrieval configurations
 extensions/<service>/
-├── deployments/         # Deployment component
-├── rotations/           # Rotation component
+├── deployment/          # Deployment component
+├── rotation/            # Rotation component
 └── get/                 # Get component
 ```
+
+> **Note**: Not all components need to be implemented. Each extension should implement only the components relevant to its service.
+
+## Configuration Structure
+
+Configurations are YAML files in the `configurations/` directory at the project root, organized by service and stage:
+
+```
+configurations/
+└── <service>/
+    ├── service.yml           # (Optional) Shared service-level config merged into all configs
+    ├── deployment/           # Deployment configurations
+    │   └── <sub_type>/       # Sub-type grouping, the folder hierarchy is preserved
+    │       └── <name>.yml
+    ├── rotation/             # Rotation configurations
+    │   └── <name>.yml
+    └── get/                  # Retrieval configurations
+        └── <name>.yml
+```
+
+Only files ending in `.yml` are loaded, so a configuration can be disabled by renaming it (e.g. to `<name>.yml.old`).
+
+When a `service.yml` file exists in a service folder, its contents are merged as defaults into every configuration file of that service. The individual configuration file values take precedence over the service-level defaults.
 
 ## Extension Requirements
 
 Each extension component must adhere to the structure expected by the core engine:
 ### Generic constraints
 
-The engine **always** passes the defined configurations as the **`configurations`** parameter for the component. If this is not defined as a variable, terraform will fail to run the project.
+The engine **always** passes the defined configurations as a parameter to the component (named `configurations`, `configs`, or `configuration`, depending on how the component is wired in `modules/`). If this is not defined as a variable, OpenTofu will fail to run the project.
 
 The engine always provides the configurations defined by the extension and the component **exclusively**. This means each component can have a typed definition for the configuration it expects.
 
@@ -65,13 +89,13 @@ In addition to generic constraints and expectations, the engine expects addition
 
 Components can be grouped into two distinct types.
 1. **Providers**: Get, Rotation
-2. **Consumers**: Deployment
+2. **Consumers**: Deployment (and Store)
 
 Additionally, to the `configurations` object the engine passes to the modules, these types are expected to also handle and provide specific outputs in a specific format.
 
 #### Providers
 
-Additionally to the generic constraints and requirements, Providers are expected to have an output property called `secrets`. The `secrets` should always be a map of objects `username` and `secret` property. The keys of this map should either be constructed by the provider in a human readable manner, or simply use the key from the `configurations` input object as this will be the reference id for consumer components for the provided secrets.
+Additionally to the generic constraints and requirements, Providers are expected to have an output property called `secret` (or `secrets`). The output should be a map where each entry contains at minimum `username` and `secret` properties. The keys of this map should either be constructed by the provider in a human readable manner, or simply use the key from the `configurations` input object as this will be the reference id for consumer components for the provided secrets.
 
 #### Consumers
 
@@ -89,3 +113,38 @@ Additionally to the generic constraints and requirements, Consumers are expected
 >   id: <secret key outputted from the provider service>
 > ```
 > These properties shall uniquely identify a secret which is defined in any provider's configuration.
+> The engine provides the placeholders `none/none` and `TBD/TBD` for consumers whose credential does not exist yet.
+
+### Component specific constraints
+
+In addition to generic and component type specific restrictions the engine also has additional restrictions and requirements based on the specific component. Components not listed here only have the Generic and the component type specific restrictions and requirements.
+
+#### Rotation
+
+##### Configurations
+
+Every rotation configuration **must** include an `expires_in` property that defines how long a credential is valid (a duration such as `720h`; templates are evaluated, so `"${30*24}h"` works too). The engine uses it to drive the dual-phase rotation cycle described in [Secret Flow](./secret_flow.md#rotate).
+
+An optional `rotation_window` property defines the overlap during which both the old and the new credential are valid. It defaults to 20% of `expires_in` and must be shorter than it.
+
+The extension itself should create a credential valid for (at least) `expires_in`; the engine decides when it is replaced.
+
+##### Inputs
+
+The engine has the retrieved credentials (Get stage) available in the rotate module as `var.secrets`, so a rotation can depend on another credential (e.g. use one credential to mint another). Pass it to the extension if it needs it.
+
+##### Wiring
+
+Each rotated service needs a `phase1`/`phase2` module pair in `modules/rotate/modules.tf` (one instance per config, so a phase change only touches that config) and an entry in `modules/rotate/outputs.tf` that picks the active phase. Use `modules/rotate/modules.tf` and `outputs.tf` of `test_service` as the template. The output keeps the set of services and ids known at plan time; keep it that way (build the maps with `for` expressions, not `merge()` over whole module outputs).
+
+#### Deployment
+
+##### Configurations
+
+The deployment configurations are organized into sub-type folders within the `deployment/` directory of a service. The engine uses the config processor (`modules/config_processor.jinja2`) to build a nested map from the folder structure, which is then passed to the deployment extension: `configurations/<service>/deployment/<sub_type>/<group>/<name>.yml` becomes `configs.<service>.<sub_type>.<group>.<name>`.
+
+Every deployment configuration also gets a `config_file` key with its path relative to the repo root (e.g. `configurations/test_service/deployment/consumer1/a/consume1.yml`), for example to put a "managed by" notice on the deployed resources. Typed `object` variables simply drop it if the extension does not declare it.
+
+##### Inputs
+
+In addition to the configurations and `secrets`, a deployment module may receive provider aliases to interact with the appropriate service instances (e.g. several organizations of the same service). Declare them in `versions.tf` of the root and thread them through `modules/deploy` to the extension.
