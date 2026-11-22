@@ -95,6 +95,15 @@ class SyncStacksTest(unittest.TestCase):
         # the get extension takes no secrets, so a get config is never wired to other stacks
         self.assertNotIn("input ", self.stack("stacks/svc/get/static"))
 
+    def test_mock_credentials_are_marked(self):
+        # The generated code detects mocks by gaean_mock and refuses to apply them (mock_guard).
+        self.sync()
+        content = self.stack("stacks/svc/deployment/consumer")
+        mocks = re.findall(r"mock = \{(.*?)\n  \}", content, re.S)
+        self.assertEqual(len(mocks), 2)  # one per input
+        for mock in mocks:
+            self.assertRegex(mock, r'"gaean_mock"\s*=\s*true')
+
     def test_placeholders_need_no_producer(self):
         self.write("configurations/svc/deployment/other/x.yml", "secret:\n  service: TBD\n  id: TBD\n")
         rc, _ = self.sync()

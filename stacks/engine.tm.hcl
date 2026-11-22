@@ -91,6 +91,32 @@ generate_hcl "_gaean_config.tf" {
           for name, ref in local.secret_refs : ref.id => local.secret_values[name] if ref.service == service
         }
       })
+
+      # A producer without state yields the mock credential (gaean_mock = true) when the run uses
+      # --mock-on-fail. Fine for previewing a fresh setup, never for applying.
+      uses_mock_credentials = anytrue([for v in values(local.secret_values) : nonsensitive(try(v.gaean_mock, false))])
+    }
+
+    check "mock_credentials" {
+      assert {
+        condition     = !local.uses_mock_credentials
+        error_message = "Planned with mock credentials (--mock-on-fail): a producer stack this stack reads from has no state yet. This plan is a preview only; applying it will be refused. Apply the producer stacks first."
+      }
+    }
+
+    # Refuses to apply with mock credentials, however the run was started (also a saved plan). Only
+    # exists while mocks are used, and the extension modules depend on it, so nothing is deployed.
+    # timestamp() is unknown while planning, so the condition is deferred and the preview plan
+    # passes; during apply it is known and the condition fails.
+    resource "terraform_data" "mock_guard" {
+      count = local.uses_mock_credentials ? 1 : 0
+
+      lifecycle {
+        precondition {
+          condition     = !local.uses_mock_credentials || timestamp() == ""
+          error_message = "Refusing to apply with mock credentials (--mock-on-fail): apply the producer stacks first, then this stack without --mock-on-fail."
+        }
+      }
     }
   }
 }
@@ -114,7 +140,10 @@ generate_hcl "_gaean_get.tf" {
           source                    = "${terramate.stack.path.to_root}/${global.gaean.extension}"
           (global.gaean.config_var) = tm_hcl_expression("{ (local.secret_id) = local.config }")
         },
-        global.gaean.pass_secrets ? { secrets = tm_hcl_expression("local.secrets") } : {},
+        global.gaean.pass_secrets ? {
+          secrets    = tm_hcl_expression("local.secrets")
+          depends_on = tm_hcl_expression("[terraform_data.mock_guard]")
+        } : {},
       )
     }
 
@@ -155,7 +184,10 @@ generate_hcl "_gaean_rotation.tf" {
           source                    = "${terramate.stack.path.to_root}/${global.gaean.extension}"
           (global.gaean.config_var) = tm_hcl_expression("{ (local.secret_id) = local.config }")
         },
-        global.gaean.pass_secrets ? { secrets = tm_hcl_expression("local.secrets") } : {},
+        global.gaean.pass_secrets ? {
+          secrets    = tm_hcl_expression("local.secrets")
+          depends_on = tm_hcl_expression("[terraform_data.mock_guard]")
+        } : {},
       )
     }
 
@@ -226,6 +258,7 @@ generate_hcl "_gaean_deployment.tf" {
         source                    = "${terramate.stack.path.to_root}/${global.gaean.extension}"
         (global.gaean.config_var) = tm_hcl_expression("local.configurations")
         secrets                   = tm_hcl_expression("local.secrets")
+        depends_on                = tm_hcl_expression("[terraform_data.mock_guard]")
       }
     }
   }

@@ -123,8 +123,18 @@ producer. The generated code rebuilds the usual `secrets` map (`service => id =>
 plus the `none/none` and `TBD/TBD` placeholders) from these inputs and passes it to the extension.
 
 Outputs sharing reads producer outputs with `tofu output -json` and hands them to consumers as `TF_VAR_*`
-environment variables, so every `terramate run` needs `--enable-sharing`. With `--mock-on-fail`, a producer
-that has no state yet yields a mock credential (`mock`/`mock`), which lets you plan a fresh setup.
+environment variables, so every `terramate run` needs `--enable-sharing`. The credentials are therefore
+in the environment of the consumer's `tofu` process (and its child processes, such as provider plugins)
+for the duration of the run: keep the runner dedicated, and don't enable shell tracing (`set -x`) or dump
+the environment in the rotation pipeline.
+
+With `--mock-on-fail`, a producer that has no state yet yields a mock credential (`mock`/`mock`, marked
+with `gaean_mock = true`), which lets you plan a fresh setup. Mocks are for previews only:
+
+- a plan that uses one shows a `mock_credentials` check warning and a `terraform_data.mock_guard` to be
+  created;
+- applying it (directly or from a saved plan) is refused by `mock_guard`'s precondition before any
+  extension resource is touched, however `terramate run` was invoked.
 
 Get and rotation stacks only take inputs when their extension declares a `secrets` variable (so a rotation
 can use one credential to mint another); deployment stacks always do.

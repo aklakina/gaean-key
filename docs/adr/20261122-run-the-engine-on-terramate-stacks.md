@@ -58,6 +58,11 @@ not give Terramate the dependency graph (`--include-all-dependents`, mocks for p
 ### Negative Consequences
 
 - Outputs sharing is an experimental Terramate feature (`experiments = ["outputs-sharing"]`).
+- Outputs sharing passes credentials to consumer processes as `TF_VAR_*` environment variables, a wider
+  exposure than values that stay inside one OpenTofu process.
+- `--mock-on-fail` (needed to plan a fresh setup) feeds mock credentials to consumers. The generated code
+  marks them and refuses to apply them (`terraform_data.mock_guard`), so a mistaken apply cannot deploy
+  them.
 - A consumer's plan shows the producer's current output, not the one an upcoming apply of the producer
   will produce; a full preview of a rotation needs the producer applied first.
 - One state per stack: removing a configuration needs a destroy of its stack before `--prune`.

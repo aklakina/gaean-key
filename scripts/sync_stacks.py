@@ -48,7 +48,10 @@ EXTENSION_HOOK = "gaean.tm.hcl"
 # Extension component folders serving each configuration stage, in order of preference. A Store
 # (storing credentials in a credential manager) is wired exactly like a Deployment.
 COMPONENT_DIRS = {"deployment": ("deployment", "store")}
-MOCK = {"username": "mock", "secret": "mock"}
+# Value a consumer gets for a producer without state when run with --mock-on-fail (planning a fresh
+# setup). gaean_mock marks it, so the generated code warns when planning with it and refuses to
+# apply it (terraform_data.mock_guard in stacks/engine.tm.hcl).
+MOCK = {"username": "mock", "secret": "mock", "gaean_mock": True}
 
 
 class SyncError(Exception):

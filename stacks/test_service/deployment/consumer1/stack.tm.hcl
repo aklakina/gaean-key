@@ -69,8 +69,9 @@ input "cred_test_service_dynamic_cred_9e40e3" {
   value         = outputs.credential.value
   sensitive     = true
   mock = {
-    "username" = "mock"
-    "secret"   = "mock"
+    "username"   = "mock"
+    "secret"     = "mock"
+    "gaean_mock" = true
   }
 }
 
@@ -80,7 +81,8 @@ input "cred_test_service_static_cred_4b4968" {
   value         = outputs.credential.value
   sensitive     = true
   mock = {
-    "username" = "mock"
-    "secret"   = "mock"
+    "username"   = "mock"
+    "secret"     = "mock"
+    "gaean_mock" = true
   }
 }

@@ -73,7 +73,7 @@ independent stacks in parallel.
 
 > [!NOTE]
 > A consumer's plan uses the producer's **current** (applied) output, or a mock value if the producer was
-> never applied (`--mock-on-fail`). A credential that is about to rotate therefore only reaches its
+> never applied (`--mock-on-fail`; applying with a mock is refused). A credential that is about to rotate therefore only reaches its
 > consumers' plans after the producer stack was applied. `terramate run ... -- tofu apply` handles that by
 > applying the stacks in order.
 

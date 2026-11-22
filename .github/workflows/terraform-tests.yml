@@ -100,6 +100,20 @@ jobs:
     - name: Initialize stacks
       run: terramate run --enable-sharing --mock-on-fail -- tofu init -input=false
 
+    - name: Test Case C - Applying with mock credentials is refused
+      run: |
+        # Nothing is applied yet, so the consumer can only get mock credentials from its producers.
+        if terramate run --chdir "$DEPLOYMENT_STACK" --enable-sharing --mock-on-fail -- tofu apply -auto-approve -input=false; then
+          echo "::error::apply with mock credentials was not refused"
+          exit 1
+        fi
+        if [ -n "$(tofu -chdir="$DEPLOYMENT_STACK" state list 2>/dev/null)" ]; then
+          echo "::error::resources were created from mock credentials"
+          exit 1
+        fi
+        # the preview plan still works
+        terramate run --chdir "$DEPLOYMENT_STACK" --enable-sharing --mock-on-fail -- tofu plan -input=false
+
     - name: Test Case B - Standard rotation
       run: |
         check_consumer() {

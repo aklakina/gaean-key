@@ -20,7 +20,7 @@
 	- Commit the stacks and generated files, or run `terramate generate`; for local experiments pass `-X` (`--disable-safeguards=all`)
 6. **A consumer has the mock credential (`mock`/`mock`) or an old one**
 	- `--enable-sharing` was missing, or the producer stack had not been applied yet when the consumer ran. Apply the producer and its dependents: `terramate run --chdir <producer stack> --include-all-dependents --enable-sharing -- tofu apply`
-	- `--mock-on-fail` only belongs to `init`/`plan`/`destroy`; never apply with it
+	- `--mock-on-fail` only belongs to `init`/`plan`/`destroy`. Applying with mock credentials fails with "Refusing to apply with mock credentials": apply the producer stacks first (or the whole graph in order with `terramate run --enable-sharing -- tofu apply`)
 7. **Rotation not triggering**
 	- Rotation is time driven: make sure the rotation stacks are applied on a schedule (`--tags rotation --include-all-dependents`), `--changed` alone does not select them
 	- Check the stack's `schedule` output (`tofu -chdir=stacks/<service>/rotation/<id> output schedule`)

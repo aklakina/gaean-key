@@ -44,6 +44,9 @@ locals {
 }
 module "extension" {
   configurations = local.configurations
-  secrets        = local.secrets
-  source         = "../../../../extensions/test_service/deployment"
+  depends_on = [
+    terraform_data.mock_guard,
+  ]
+  secrets = local.secrets
+  source  = "../../../../extensions/test_service/deployment"
 }
